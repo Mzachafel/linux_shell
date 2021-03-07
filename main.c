@@ -6,6 +6,8 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <regex.h>
+#include <dirent.h>
 
 #define LINESIZE 1024
 #define WORDSIZE 128
@@ -13,16 +15,21 @@
 enum token { Num, Pipe, In, Out };
 
 typedef struct {
-	char* argv[10];
+	char* argv[32];
 	int argc;
 } Command;
-Command comms[10];
+
+Command comms[8];
 int ncomm;
+
 char* infile;
 char* outfile;
 
+char currdir[100];
+
 int parseline(char*);
 int getword(char*, int, char*);
+int expandwildcard(char*);
 int execute(void);
 int clearcomms(void);
 
@@ -30,7 +37,7 @@ int main(int argc, char* argv[])
 {
 	char line[LINESIZE];
 
-	printf("$ ");
+	printf("%s$ ", getcwd(currdir, 100));
 	while (fgets(line, LINESIZE, stdin) != NULL) {
 		if (!parseline(line))
 			fputs("Error parsing line\n", stderr);
@@ -38,7 +45,7 @@ int main(int argc, char* argv[])
 			fputs("Error executing command\n", stderr);
 		if (!clearcomms())
 			fputs("Error freeing memory\n", stderr);
-		printf("$ ");
+		printf("%s$ ", getcwd(currdir, 100));
 	}
 	printf("\n");
 
@@ -57,7 +64,8 @@ int parseline(char* line)
 			line++;
 		switch (getword(word, WORDSIZE, line)) {
 			case Num:
-				comms[ncomm].argv[comms[ncomm].argc++] = strdup(word);
+				if (!expandwildcard(word))
+					fputs("Error executing regex\n", stderr);
 				break;
 			case Pipe:
 				comms[ncomm].argv[comms[ncomm].argc] = NULL;
@@ -103,12 +111,61 @@ int getword(char* word, int lim, char* line)
 	return Num;
 }
 
+int expandwildcard(char* arg)
+{
+	if (strpbrk(arg, "*?") == NULL) {
+		comms[ncomm].argv[comms[ncomm].argc++] = strdup(arg);
+		return 1;
+	}
+
+	char *reg = (char*) malloc(2*strlen(arg)+10);
+	char *a = arg;
+	char *r = reg;
+
+	*r++ = '^';
+	while (*a) {
+		if (*a == '*') { *r++='.'; *r++='*'; }
+		else if (*a == '?') *r++='.';
+		else if (*a == '.') { *r++='\\'; *r++='.'; }
+		else *r++=*a;
+		a++;
+	}
+	*r++='$'; *r='\0';
+
+	regex_t preg;
+	int rc;
+
+	if ((rc = regcomp(&preg, reg, 0)) != 0)
+		return 0;
+
+	DIR *dir = opendir(".");
+	if (dir == NULL)
+		return 0;
+
+	struct dirent *ent;
+	size_t nmatch = 1;
+	regmatch_t pmatch[1];
+	while ((ent = readdir(dir)) != NULL)
+		if (!regexec(&preg, ent->d_name, nmatch, pmatch, 0))
+			comms[ncomm].argv[comms[ncomm].argc++] = strdup(ent->d_name);
+	closedir(dir);
+	return 1;
+}
+
 int execute(void)
 {
 	int ret, status, i;
 
 	if (comms[0].argc == 0)
 		return 1;
+	if (!strcmp(comms[0].argv[0], "cd"))
+		if (comms[0].argc > 2) {
+			printf("cd: Too many arguments\n");
+			return 1;
+		} else {
+			chdir(comms[0].argv[1]);
+			return 1;
+		}
 
 	int tmpin = dup(0);
 	int tmpout = dup(1);
