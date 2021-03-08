@@ -14,13 +14,24 @@
 
 enum token { Num, Pipe, In, Out };
 
+#define COMMAX 8
 typedef struct {
-	char* argv[32];
-	int argc;
+	char **args;
+	int max;
+	int cur;
 } Command;
 
-Command comms[8];
-int ncomm;
+#define COMTABMAX 4
+Command *coms;
+int max;
+int cur;
+
+void creatcom(void)
+{
+	coms[cur].args = (char **) malloc(COMMAX*sizeof(char *));
+	coms[cur].max = COMMAX;
+	coms[cur].cur = 0;
+}
 
 char* infile;
 char* outfile;
@@ -31,7 +42,7 @@ int parseline(char*);
 int getword(char*, int, char*);
 int expandwildcard(char*);
 int execute(void);
-int clearcomms(void);
+int clearcoms(void);
 
 int main(int argc, char* argv[])
 {
@@ -43,7 +54,7 @@ int main(int argc, char* argv[])
 			fputs("Error parsing line\n", stderr);
 		if (!execute())
 			fputs("Error executing command\n", stderr);
-		if (!clearcomms())
+		if (!clearcoms())
 			fputs("Error freeing memory\n", stderr);
 		printf("%s$ ", getcwd(currdir, 100));
 	}
@@ -56,8 +67,11 @@ int parseline(char* line)
 {
 	char word[WORDSIZE];
 
-	ncomm=0;
-	comms[ncomm].argc = 0;
+	coms = (Command *) malloc(COMTABMAX*sizeof(Command));
+	max = COMTABMAX;
+	cur = 0;
+
+	creatcom();
 
 	while (*line != '\n') {
 		while (*line == ' ')
@@ -68,8 +82,17 @@ int parseline(char* line)
 					fputs("Error executing regex\n", stderr);
 				break;
 			case Pipe:
-				comms[ncomm].argv[comms[ncomm].argc] = NULL;
-				comms[++ncomm].argc = 0;
+				if (coms[cur].cur == coms[cur].max) {
+					coms[cur].max++;
+					coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
+				}
+				coms[cur].args[coms[cur].cur] = NULL;
+				cur++;
+				if (cur == max) {
+					max *= 2;
+					coms = realloc(coms, max*sizeof(Command));
+				}
+				creatcom();
 				break;
 			case In:
 				line++;
@@ -91,7 +114,11 @@ int parseline(char* line)
 		while (*line != ' ' && *line != '\n')
 			line++;
 	}
-	comms[ncomm].argv[comms[ncomm].argc] = NULL;
+	if (coms[cur].cur == coms[cur].max) {
+		coms[cur].max++;
+		coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
+	}
+	coms[cur].args[coms[cur].cur] = NULL;
 
 	return 1;
 }
@@ -114,7 +141,11 @@ int getword(char* word, int lim, char* line)
 int expandwildcard(char* arg)
 {
 	if (strpbrk(arg, "*?") == NULL) {
-		comms[ncomm].argv[comms[ncomm].argc++] = strdup(arg);
+		if (coms[cur].cur == coms[cur].max) {
+			coms[cur].max *= 2;
+			coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
+		}
+		coms[cur].args[coms[cur].cur++] = strdup(arg);
 		return 1;
 	}
 
@@ -146,8 +177,13 @@ int expandwildcard(char* arg)
 	size_t nmatch = 1;
 	regmatch_t pmatch[1];
 	while ((ent = readdir(dir)) != NULL)
-		if (!regexec(&preg, ent->d_name, nmatch, pmatch, 0))
-			comms[ncomm].argv[comms[ncomm].argc++] = strdup(ent->d_name);
+		if (!regexec(&preg, ent->d_name, nmatch, pmatch, 0)) {
+			if (coms[cur].cur == coms[cur].max) {
+				coms[cur].max *= 2;
+				coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
+			}
+			coms[cur].args[coms[cur].cur++] = strdup(ent->d_name);
+		}
 	closedir(dir);
 	return 1;
 }
@@ -156,14 +192,14 @@ int execute(void)
 {
 	int ret, status, i;
 
-	if (comms[0].argc == 0)
+	if (coms[0].cur == 0)
 		return 1;
-	if (!strcmp(comms[0].argv[0], "cd"))
-		if (comms[0].argc > 2) {
+	if (!strcmp(coms[0].args[0], "cd"))
+		if (coms[0].cur > 2) {
 			printf("cd: Too many arguments\n");
 			return 1;
 		} else {
-			chdir(comms[0].argv[1]);
+			chdir(coms[0].args[1]);
 			return 1;
 		}
 
@@ -177,11 +213,11 @@ int execute(void)
 	else
 		fdin = dup(tmpin);
 
-	for (int i=0; i<=ncomm; i++) {
+	for (int i=0; i<=cur; i++) {
 		dup2(fdin, 0);
 		close(fdin);
 
-		if (i == ncomm)
+		if (i == cur)
 			if (outfile)
 				fdout = creat(outfile, 0644);
 			else
@@ -200,7 +236,7 @@ int execute(void)
 			case -1:
 				return 0;
 			case 0:
-				execvp(comms[i].argv[0], comms[i].argv);
+				execvp(coms[i].args[0], coms[i].args);
 				exit(EXIT_SUCCESS);
 		}
 	}
@@ -215,13 +251,17 @@ int execute(void)
 	return 1;
 }
 
-int clearcomms(void)
+int clearcoms(void)
 {
 	int i, j;
 
-	for (i=0; i<=ncomm; i++)
-		for (j=0; j<comms[i].argc; j++)
-			free(comms[i].argv[j]);
+	for (i=0; i<=cur; i++)
+		for (j=0; j<coms[i].cur; j++) {
+			free(coms[i].args[j]);
+			coms[i].max = COMMAX;
+			coms[i].cur = 0;
+		}
+	free(coms);
 	if (infile) {
 		free(infile);
 		infile = NULL;
