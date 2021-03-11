@@ -32,6 +32,18 @@ void creatcom(void)
 	coms[cur].max = COMMAX;
 	coms[cur].cur = 0;
 }
+void addarg(char *arg)
+{
+	if (coms[cur].cur == coms[cur].max) {
+		if (!arg)
+			coms[cur].max++;
+		else
+			coms[cur].max *= 2;
+		coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
+	}
+	coms[cur].args[coms[cur].cur++] = (!arg) ? NULL : strdup(arg);
+}
+
 
 char* infile;
 char* outfile;
@@ -40,7 +52,7 @@ char currdir[100];
 
 int parseline(char*);
 int getword(char*, int, char*);
-int expandwildcard(char*);
+int expandwildcard(char*, char*);
 int execute(void);
 int clearcoms(void);
 
@@ -78,15 +90,11 @@ int parseline(char* line)
 			line++;
 		switch (getword(word, WORDSIZE, line)) {
 			case Num:
-				if (!expandwildcard(word))
-					fputs("Error executing regex\n", stderr);
+				if (!expandwildcard("", word))
+					fputs("Error expanding wildcard\n", stderr);
 				break;
 			case Pipe:
-				if (coms[cur].cur == coms[cur].max) {
-					coms[cur].max++;
-					coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
-				}
-				coms[cur].args[coms[cur].cur] = NULL;
+				addarg(NULL);
 				cur++;
 				if (cur == max) {
 					max *= 2;
@@ -114,11 +122,7 @@ int parseline(char* line)
 		while (*line != ' ' && *line != '\n')
 			line++;
 	}
-	if (coms[cur].cur == coms[cur].max) {
-		coms[cur].max++;
-		coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
-	}
-	coms[cur].args[coms[cur].cur] = NULL;
+	addarg(NULL);
 
 	return 1;
 }
@@ -138,29 +142,34 @@ int getword(char* word, int lim, char* line)
 	return Num;
 }
 
-int expandwildcard(char* arg)
+int expandwildcard(char* prefix, char* suffix)
 {
-	if (strpbrk(arg, "*?") == NULL) {
-		if (coms[cur].cur == coms[cur].max) {
-			coms[cur].max *= 2;
-			coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
-		}
-		coms[cur].args[coms[cur].cur++] = strdup(arg);
+	if (!strcmp(prefix, "") && !strpbrk(suffix, "*?")) {
+		addarg(suffix);
+		return 1;
+	}
+	if (*suffix == '\0') {
+		addarg(prefix);
 		return 1;
 	}
 
-	char *reg = (char*) malloc(2*strlen(arg)+10);
-	char *a = arg;
+	char *reg = (char*) malloc(2*strlen(suffix)+10);
+	char *s = suffix;
 	char *r = reg;
 
+	if (*s == '/')
+		s++;
+
 	*r++ = '^';
-	while (*a) {
-		if (*a == '*') { *r++='.'; *r++='*'; }
-		else if (*a == '?') *r++='.';
-		else if (*a == '.') { *r++='\\'; *r++='.'; }
-		else *r++=*a;
-		a++;
+	while (*s != '\0' && *s != '/') {
+		if (*s == '*') { *r++='.'; *r++='*'; }
+		else if (*s == '?') *r++='.';
+		else if (*s == '.') { *r++='\\'; *r++='.'; }
+		else *r++=*s;
+		s++;
 	}
+	if (*s == '/')
+		*s++;
 	*r++='$'; *r='\0';
 
 	regex_t preg;
@@ -169,21 +178,44 @@ int expandwildcard(char* arg)
 	if ((rc = regcomp(&preg, reg, 0)) != 0)
 		return 0;
 
-	DIR *dir = opendir(".");
-	if (dir == NULL)
+	DIR *dir;
+	if (!strcmp(prefix, "")) {
+		if (suffix[0] == '/')
+			dir = opendir("/");
+		else
+			dir = opendir(".");
+	} else
+		dir = opendir(prefix);
+	if (dir == NULL) {
+		regfree(&preg);
 		return 0;
+	}
 
 	struct dirent *ent;
 	size_t nmatch = 1;
 	regmatch_t pmatch[1];
 	while ((ent = readdir(dir)) != NULL)
 		if (!regexec(&preg, ent->d_name, nmatch, pmatch, 0)) {
-			if (coms[cur].cur == coms[cur].max) {
-				coms[cur].max *= 2;
-				coms[cur].args = realloc(coms[cur].args, coms[cur].max*sizeof(char *));
+			if (ent->d_name[0] == '.') {
+				if (suffix[0] == '.') {
+					char* tmp = (char*) malloc(strlen(prefix)+strlen(ent->d_name)+2);
+					strcpy(tmp, prefix); 
+					if (strcmp(prefix, "") || suffix[0] == '/') strcat(tmp, "/"); 
+					strcat(tmp, ent->d_name);
+					expandwildcard(tmp, s);
+					free(tmp);
+				}
 			}
-			coms[cur].args[coms[cur].cur++] = strdup(ent->d_name);
+			else {
+				char* tmp = (char*) malloc(strlen(prefix)+strlen(ent->d_name)+2);
+				strcpy(tmp, prefix); 
+				if (strcmp(prefix, "") || suffix[0] == '/') strcat(tmp, "/"); 
+				strcat(tmp, ent->d_name);
+				expandwildcard(tmp, s);
+				free(tmp);
+			}
 		}
+	regfree(&preg);
 	closedir(dir);
 	return 1;
 }
@@ -195,7 +227,7 @@ int execute(void)
 	if (coms[0].cur == 0)
 		return 1;
 	if (!strcmp(coms[0].args[0], "cd"))
-		if (coms[0].cur > 2) {
+		if (coms[0].cur > 2 && coms[0].args[2] != NULL) {
 			printf("cd: Too many arguments\n");
 			return 1;
 		} else {
