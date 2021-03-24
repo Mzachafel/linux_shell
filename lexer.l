@@ -1,12 +1,15 @@
 %{
-#define YYSTYPE char *
 #include "parser.tab.h"
 %}
 
 %%
-"|"	   { return PIPE; }
-[a-zA-Z0-9-]+ { yylval = strdup(yytext); return WORD; }
-\n	   { return NEWLINE; }
+"|" { return '|'; }
+"<" { return L; }
+">" { return G; }
+">>" { return GG; }
+"&" { return '&'; }	   
+[a-zA-Z0-9?*_\.\/-]+|"~" { yylval.arg = strdup(yytext); return ARG; }
+\n	   { return NL; }
 [ \t]      { /* ignore whitespaces */ }
 . 	   { printf("syntax error\n"); }
 %%

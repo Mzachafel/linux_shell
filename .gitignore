@@ -52,4 +52,5 @@ Mkfile.old
 dkms.conf
 
 mzsh
-mkf
+lex.yy.c
+parser.tab.*
