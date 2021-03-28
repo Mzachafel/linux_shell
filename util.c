@@ -22,12 +22,63 @@ void printprompt(void)
 	printf("%s$ ", getcwd(cwd, 100));
 }
 
-struct arguments *expandwc(struct arguments *args, char* prefix, char* suffix)
+#define DEFMAXSL 8
+struct sortinglist {
+	int maxarg;
+	char **args;
+	int curarg;
+} *sl;
+
+void creatsl(void)
 {
-	if (!strcmp(prefix, "") && !strpbrk(suffix, "*?"))
-		return addarg(args, suffix);
-	if (*suffix == '\0')
-		return addarg(args, prefix);
+	sl = (struct sortinglist *) malloc(sizeof(struct sortinglist));
+	sl->maxarg = DEFMAXSL;
+	sl->args = (char **) calloc(sl->maxarg, sizeof(char *));
+	sl->curarg = 0;
+}
+
+void addtosl(char *arg)
+{
+	if (sl->curarg == sl->maxarg) {
+		sl->maxarg *= 2;
+		sl->args = (char **) realloc(sl->args, sl->maxarg * sizeof(char *));
+	}
+	sl->args[sl->curarg++] = strdup(arg);
+}
+
+int cmpfunc(const void *a, const void *b)
+{
+	const char **ia = (const char **) a;
+	const char **ib = (const char **) b;
+	return strcmp(*ia, *ib);
+}
+
+struct arguments *writesl(struct arguments *args)
+{
+	qsort(sl->args, sl->curarg, sizeof(char *), cmpfunc);
+	for (int i=0; i<sl->curarg; i++)
+		args = addarg(args, sl->args[i]);
+
+	return args;
+}
+
+void clearsl(void)
+{
+	for (int i=0; i<sl->curarg; i++)
+		free(sl->args[i]);
+	free(sl);
+}
+
+void wildcard(char* prefix, char* suffix)
+{
+	if (!strcmp(prefix, "") && !strpbrk(suffix, "*?")) {
+		addtosl(suffix);
+		return;
+	}
+	if (*suffix == '\0') {
+		addtosl(prefix);
+		return;
+	}
 
 	char *reg = (char*) malloc(2*strlen(suffix)+10);
 	char *s = suffix;
@@ -52,7 +103,7 @@ struct arguments *expandwc(struct arguments *args, char* prefix, char* suffix)
 	int rc;
 
 	if ((rc = regcomp(&preg, reg, 0)) != 0)
-		return NULL;
+		return;
 
 	DIR *dir;
 	if (!strcmp(prefix, "")) {
@@ -64,7 +115,7 @@ struct arguments *expandwc(struct arguments *args, char* prefix, char* suffix)
 		dir = opendir(prefix);
 	if (dir == NULL) {
 		regfree(&preg);
-		return NULL;
+		return;
 	}
 
 	struct dirent *ent;
@@ -78,7 +129,7 @@ struct arguments *expandwc(struct arguments *args, char* prefix, char* suffix)
 					strcpy(tmp, prefix); 
 					if (strcmp(prefix, "") || suffix[0] == '/') strcat(tmp, "/"); 
 					strcat(tmp, ent->d_name);
-					args = expandwc(args, tmp, s);
+					wildcard(tmp, s);
 					free(tmp);
 				}
 			}
@@ -87,12 +138,21 @@ struct arguments *expandwc(struct arguments *args, char* prefix, char* suffix)
 				strcpy(tmp, prefix); 
 				if (strcmp(prefix, "") || suffix[0] == '/') strcat(tmp, "/"); 
 				strcat(tmp, ent->d_name);
-				args = expandwc(args, tmp, s);
+				wildcard(tmp, s);
 				free(tmp);
 			}
 		}
 	regfree(&preg);
 	closedir(dir);
+}
+
+struct arguments *expandwc(struct arguments *args, char *wc)
+{
+	creatsl();
+	wildcard("", wc);
+	args = writesl(args);
+	clearsl();
+
 	return args;
 }
 
