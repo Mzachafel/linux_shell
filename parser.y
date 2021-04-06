@@ -38,11 +38,8 @@ command_line:
 	        execcoms($1);
 		clearcoms($1);
 		clearvars();
-		printprompt();
 	    }
-            | NL {
-		printprompt();
-	    }
+            | NL { }
 ;
 
 commands:

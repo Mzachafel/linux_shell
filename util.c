@@ -15,13 +15,6 @@ extern char *outfile;
 extern int append;
 extern int background;
 
-char cwd[100];
-
-void printprompt(void)
-{
-	printf("%s$ ", getcwd(cwd, 100));
-}
-
 #define DEFMAXSL 8
 struct sortinglist {
 	int maxarg;
