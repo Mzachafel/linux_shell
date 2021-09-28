@@ -64,15 +64,18 @@ void clearsl(void)
 
 void wildcard(char* prefix, char* suffix)
 {
+	// skip wildcard expansion if no joker symbols in expression
 	if (!strcmp(prefix, "") && !strpbrk(suffix, "*?")) {
 		addtosl(suffix);
 		return;
 	}
+	// leaf of wildcard expansion
 	if (*suffix == '\0') {
 		addtosl(prefix);
 		return;
 	}
 
+	// get next regex in path
 	char *reg = (char*) malloc(2*strlen(suffix)+10);
 	char *s = suffix;
 	char *r = reg;
@@ -98,6 +101,7 @@ void wildcard(char* prefix, char* suffix)
 	if ((rc = regcomp(&preg, reg, 0)) != 0)
 		return;
 
+	// if path begins with '/' -> absolute, else -> current directory as beginning
 	DIR *dir;
 	if (!strcmp(prefix, "")) {
 		if (suffix[0] == '/')
@@ -111,21 +115,15 @@ void wildcard(char* prefix, char* suffix)
 		return;
 	}
 
+	// expanding wildcard tree
 	struct dirent *ent;
 	size_t nmatch = 1;
 	regmatch_t pmatch[1];
 	while ((ent = readdir(dir)) != NULL)
 		if (!regexec(&preg, ent->d_name, nmatch, pmatch, 0)) {
-			if (ent->d_name[0] == '.') {
-				if (suffix[0] == '.') {
-					char* tmp = (char*) malloc(strlen(prefix)+strlen(ent->d_name)+2);
-					strcpy(tmp, prefix); 
-					if (strcmp(prefix, "") || suffix[0] == '/') strcat(tmp, "/"); 
-					strcat(tmp, ent->d_name);
-					wildcard(tmp, s);
-					free(tmp);
-				}
-			}
+			// skip filename with dot in beginnging if wildcard doesn't start with dot
+			if (ent->d_name[0] == '.' && suffix[0] != '.')
+				continue;
 			else {
 				char* tmp = (char*) malloc(strlen(prefix)+strlen(ent->d_name)+2);
 				strcpy(tmp, prefix); 
@@ -149,20 +147,27 @@ struct arguments *expandwc(struct arguments *args, char *wc)
 	return args;
 }
 
+int builtin(struct commands *coms)
+{
+	if (!strcmp(coms->com_list[0]->arg_list[0], "cd"))
+		if (coms->com_list[0]->curarg > 2 && coms->com_list[0]->arg_list[2] != NULL) {
+			printf("cd: Too many arguments\n");
+			return 1;
+		} else {
+			chdir(coms->com_list[0]->arg_list[1]);
+			return 1;
+		}
+	else if (!strcmp(coms->com_list[0]->arg_list[0], "exit"))
+		exit(EXIT_SUCCESS);
+	return 0;
+}
+
 void execcoms(struct commands *coms)
 {
 	int ret, status, i;
 
-	if (coms->curcom == 0)
+	if (coms->curcom == 0 || builtin(coms))
 		return;
-	if (!strcmp(coms->com_list[0]->arg_list[0], "cd"))
-		if (coms->com_list[0]->curarg > 2 && coms->com_list[0]->arg_list[2] != NULL) {
-			printf("cd: Too many arguments\n");
-			return;
-		} else {
-			chdir(coms->com_list[0]->arg_list[1]);
-			return;
-		}
 
 	int tmpin = dup(0);
 	int tmpout = dup(1);
@@ -196,13 +201,14 @@ void execcoms(struct commands *coms)
 		dup2(fdout,1);
 		close(fdout);
 
-		switch (ret = fork()) {
-			case -1:
-				return;
-			case 0:
-				execvp(coms->com_list[i]->arg_list[0], coms->com_list[i]->arg_list);
-				exit(EXIT_SUCCESS);
-		}
+		if ((ret = fork()) == 0) {
+			if (execvp(coms->com_list[i]->arg_list[0], coms->com_list[i]->arg_list) == -1) {
+				dup2(tmpout, 1);
+				printf("Command '%s' not found\n", coms->com_list[i]->arg_list[0]);
+			}
+			exit(EXIT_SUCCESS);
+		} else if (ret < 0)
+			break;
 	}
 
 	dup2(tmpin,0);
@@ -211,7 +217,7 @@ void execcoms(struct commands *coms)
 	close(tmpout);
 
 	if (!background)
-		waitpid(ret, &status, WUNTRACED);
+		waitpid(ret, &status, 0);
 
 	return;
 }

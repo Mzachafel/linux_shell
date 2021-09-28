@@ -1,12 +1,8 @@
+#include "ast.h"
 #include <stdlib.h>
 #include <string.h>
 
 #define DEFMAXARGS 8
-struct arguments {
-	int maxarg;
-	char **arg_list;
-	int curarg;
-};
 
 struct arguments *creatargs(void)
 {
@@ -42,11 +38,6 @@ void clearargs(struct arguments *args)
 
 
 #define DEFMAXCOMS 4
-struct commands {
-	int maxcom;
-	struct arguments **com_list;
-	int curcom;
-};
 
 struct commands *creatcoms(void)
 {

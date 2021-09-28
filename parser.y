@@ -55,7 +55,7 @@ commands:
 arguments:
 	 ARG {
 	     struct arguments *args = creatargs();
-	     $$ = expandwc(args, $1);
+	     $$ = addarg(args, $1);
 	 }
 	 | arguments ARG {
 	     $$ = expandwc($1, $2);

@@ -6,22 +6,16 @@
 #include <unistd.h>
 #include "parser.tab.h"
 
-#define YY_INPUT(b,r,s) r = my_input(b, s)
-
-int my_input(char *b, int s)
-{
-	char *line;
-	if (feof(yyin)) return YY_NULL;
-	char cwd[100];
-	char prompt[110];
-	sprintf(prompt, "%s$ ", getcwd(cwd, 100));
-	line = readline(prompt);
-	if (!line) return YY_NULL;
-	if (strlen(line) > s-2) return YY_NULL;
-	sprintf(b, "%s\n", line);
-	add_history(line);
-	free(line);
-	return strlen(b);
+#define YY_INPUT(buf,result,max_size) \
+{ \
+	result = YY_NULL; \
+	static char prompt[102]; \
+	strcat(getcwd(prompt,100), "$ "); \
+	char *line = readline(prompt); \
+	add_history(line); \
+	sprintf(buf, "%s\n", line); \
+	free(line); \
+	result = strlen(buf); \
 }
 
 %}
@@ -37,3 +31,10 @@ int my_input(char *b, int s)
 [ \t]      { /* ignore whitespaces */ }
 . 	   { printf("syntax error\n"); }
 %%
+
+int main()
+{
+	yyparse();
+	printf("\n");
+	return 0;
+}
