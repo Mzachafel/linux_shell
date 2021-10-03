@@ -1,9 +1,8 @@
 %{
 
-#include <string.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <unistd.h>
+#include <signal.h>
 #include "parser.tab.h"
 
 #define YY_INPUT(buf,result,max_size) \
@@ -11,30 +10,32 @@
 	result = YY_NULL; \
 	static char prompt[102]; \
 	strcat(getcwd(prompt,100), "$ "); \
-	char *line = readline(prompt); \
-	add_history(line); \
-	sprintf(buf, "%s\n", line); \
-	free(line); \
+	cmdline = readline(prompt); \
+	if (cmdline[0] != '\0') \
+		add_history(cmdline); \
+	sprintf(buf, "%s\n", cmdline); \
 	result = strlen(buf); \
 }
+
+char *cmdline = NULL;
 
 %}
 
 %%
-"|" { return '|'; }
-"<" { return L; }
-">" { return G; }
-">>" { return GG; }
-"&" { return '&'; }	   
-[a-zA-Z0-9?*_\.\/-]+|"~" { yylval.arg = strdup(yytext); return ARG; }
-\n	   { return NL; }
-[ \t]      { /* ignore whitespaces */ }
-. 	   { printf("syntax error\n"); }
+"|" 			 { return PIPE; }
+"<" 			 { return READ; }
+">" 			 { return OVERWRITE; }
+">>"			 { return APPEND; }
+"&"			 { return BACKGROUND; }	   
+[a-zA-Z0-9?*_\.\/-]+|"~" { yylval.arg = strdup(yytext); return _ARGUMENT; }
+\n			 { return _NEWLINE; }
+[ \t]			 { /* ignore whitespaces */ }
+.			 { printf("syntax error\n"); }
 %%
 
 int main()
 {
+	signal(SIGCHLD, SIG_IGN);
 	yyparse();
-	printf("\n");
 	return 0;
 }

@@ -1,5 +1,8 @@
-#ifndef MY_AST_H
-#define MY_AST_H
+#ifndef AST_H
+#define AST_H
+
+#include <stdlib.h>
+#include <string.h>
 
 struct arguments {
 	int maxarg;
