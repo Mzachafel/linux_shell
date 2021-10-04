@@ -19,6 +19,8 @@
 
 char *cmdline = NULL;
 
+void sigchldhandler(int sig);
+
 %}
 
 %%
@@ -27,7 +29,7 @@ char *cmdline = NULL;
 ">" 			 { return OVERWRITE; }
 ">>"			 { return APPEND; }
 "&"			 { return BACKGROUND; }	   
-[a-zA-Z0-9?*_\.\/-]+|"~" { yylval.arg = strdup(yytext); return _ARGUMENT; }
+%?[a-zA-Z0-9?*_\.\/-]+|"~" { yylval.arg = strdup(yytext); return _ARGUMENT; }
 \n			 { return _NEWLINE; }
 [ \t]			 { /* ignore whitespaces */ }
 .			 { printf("syntax error\n"); }
@@ -35,7 +37,7 @@ char *cmdline = NULL;
 
 int main()
 {
-	signal(SIGCHLD, SIG_IGN);
+	signal(SIGCHLD, sigchldhandler);
 	yyparse();
 	return 0;
 }

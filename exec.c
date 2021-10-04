@@ -6,10 +6,19 @@ extern char *outfile;
 extern int append;
 extern int background;
 
+static void waitfg(pid_t jid);
 static int builtin(struct commands *coms);
 static void clearvars(void);
 
 static sigset_t mask_def, mask_ttou;
+
+void sigchldhandler(int sig)
+{
+	pid_t pid;
+	while ((pid = waitpid(-1, NULL, WNOHANG)) > 0) {
+		jb_destroy(pid);
+	}
+}
 
 void execcoms(struct commands *coms)
 {
@@ -55,11 +64,15 @@ void execcoms(struct commands *coms)
 		else {
 			if (i==0) { 
 				pgid = pid;
-				jid = jb_create(cmdline, pgid);
+				jid = jb_create(cmdline, pgid, coms->curcom);
+			} else {
+				jb_addpid(pid);
 			}
 			setpgid(pid, pgid);
-			if (!background && i == coms->curcom-1)
+			if (!background && i == coms->curcom-1) {
+				dup2(tmpout,1);
 				tcsetpgrp(STDOUT_FILENO, pgid);
+			}
 		}
 	}
 
@@ -69,39 +82,94 @@ void execcoms(struct commands *coms)
 	close(tmpout);
 
 	if (!background) {
-		int status;
-		waitpid(pid, &status, WUNTRACED);
-		if (WIFSTOPPED(status)) {
-			printf("[%d] %s\n", jid, cmdline);
-		} else {
-			jb_destroy(jid);
-		}
-
-		sigemptyset(&mask_ttou);
-		sigaddset(&mask_ttou, SIGTTOU);
-		sigprocmask(SIG_BLOCK, &mask_ttou, &mask_def);
-		tcsetpgrp(STDOUT_FILENO, getpid());
-		sigprocmask(SIG_SETMASK, &mask_def, NULL);
+		waitfg(jid);
 	} else
-		printf("[%d] %s\n", jid, cmdline);
+		printf("[%d] %s %s\n", jid, getstate(0), cmdline);
 
 	clearvars();
 }
 
+static void waitfg(pid_t jid)
+{
+	job *temp = jb_getattr(jid, 1);
+	int status;
+	waitpid(temp->pids[temp->npids-1], &status, WUNTRACED);
+	if (WIFSTOPPED(status)) {
+		temp->state = 1;
+		printf("\n[%d] %s %s\n", jid, getstate(1), temp->comm);
+	} else {
+		jb_destroy(temp->pids[temp->npids-1]);
+	}
+	sigemptyset(&mask_ttou);
+	sigaddset(&mask_ttou, SIGTTOU);
+	sigprocmask(SIG_BLOCK, &mask_ttou, &mask_def);
+	tcsetpgrp(STDOUT_FILENO, getpid());
+	sigprocmask(SIG_SETMASK, &mask_def, NULL);
+}
+
+
 static int builtin(struct commands *coms)
 {
-	if (!strcmp(coms->com_list[0]->arg_list[0], "cd"))
-		if (coms->com_list[0]->curarg > 2 && coms->com_list[0]->arg_list[2] != NULL) {
-			printf("cd: Too many arguments\n");
-			return 1;
-		} else {
+	if (!strcmp(coms->com_list[0]->arg_list[0], "cd")) {
+		if (coms->com_list[0]->curarg != 3)
+			printf("usage: cd path\n");
+		else
 			chdir(coms->com_list[0]->arg_list[1]);
-			return 1;
-		}
-	else if (!strcmp(coms->com_list[0]->arg_list[0], "exit"))
+		return 1;
+	} else if (!strcmp(coms->com_list[0]->arg_list[0], "exit")) {
 		exit(EXIT_SUCCESS);
-	else if (!strcmp(coms->com_list[0]->arg_list[0], "jobs")) {
+	} else if (!strcmp(coms->com_list[0]->arg_list[0], "jobs")) {
 		jb_print();
+		return 1;
+	} else if (!strcmp(coms->com_list[0]->arg_list[0], "kill")) {
+		if (coms->com_list[0]->curarg < 3) {
+			printf("usage: kill pid\n");
+		} else {
+			job *temp;
+			pid_t id;
+			int type;
+			for (int i=1; coms->com_list[0]->arg_list[i] != NULL; i++) {
+				if (coms->com_list[0]->arg_list[i][0] == '%') {
+					id = atoi(coms->com_list[0]->arg_list[i]+1);
+					type = 1;
+				} else {
+					id = atoi(coms->com_list[0]->arg_list[i]);
+					type = 0;
+				}
+				if ((temp = jb_getattr(id, type)) != NULL)
+					kill(-temp->pgid, SIGINT);
+				else if (type == 0)
+					kill(id, SIGINT);
+			}
+		}
+		return 1;
+	} else if (!strcmp(coms->com_list[0]->arg_list[0], "fg")) {
+		if (coms->com_list[0]->curarg != 3) {
+			printf("usage: fg %%jid\n");
+		} else {
+			job *temp;
+			pid_t jid;
+			jid = atoi(coms->com_list[0]->arg_list[1]+1);
+			if ((temp = jb_getattr(jid, 1)) != NULL) {
+				temp->state = 0;
+				kill(-temp->pgid, SIGCONT);
+				tcsetpgrp(STDOUT_FILENO, temp->pgid);
+				waitfg(jid);
+			}
+		}
+		return 1;
+	} else if (!strcmp(coms->com_list[0]->arg_list[0], "bg")) {
+		if (coms->com_list[0]->curarg != 3) {
+			printf("usage: bg %%jid\n");
+		} else {
+			job *temp;
+			pid_t jid;
+			jid = atoi(coms->com_list[0]->arg_list[1]+1);
+			if ((temp = jb_getattr(jid, 1)) != NULL) {
+				temp->state = 0;
+				kill(-temp->pgid, SIGCONT);
+			}
+		}
 		return 1;
 	}
 	return 0;
