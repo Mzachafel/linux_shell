@@ -7,7 +7,9 @@ void yyerror(const char*);
 
 char *infile = NULL;
 char *outfile = NULL;
-int append = 0;
+char *errfile = NULL;
+int outappend = 0;
+int errappend = 0;
 int background = 0;
 
 %}
@@ -18,7 +20,7 @@ int background = 0;
 	char *arg;
 }
 
-%token PIPE READ OVERWRITE APPEND BACKGROUND _NEWLINE
+%token PIPE READ OUTOVERWRITE OUTAPPEND ERROVERWRITE ERRAPPEND ERRTOOUT BACKGROUND _NEWLINE
 %token <arg> _ARGUMENT
 
 %type <coms> commands
@@ -59,15 +61,26 @@ arguments:
 ;
 
 io_redir:
-	| READ _ARGUMENT {
-	    infile = strdup($2);
+	| io_redir READ _ARGUMENT {
+	    infile = strdup($3);
 	}
-	| OVERWRITE _ARGUMENT {
-	    outfile = strdup($2);
+	| io_redir OUTOVERWRITE _ARGUMENT {
+	    outfile = strdup($3);
 	}
-	| APPEND _ARGUMENT {
-	    outfile = strdup($2);
-	    append = 1;
+	| io_redir OUTAPPEND _ARGUMENT {
+	    outfile = strdup($3);
+	    outappend = 1;
+	}
+	| io_redir ERROVERWRITE _ARGUMENT {
+	    errfile = strdup($3);
+	}
+	| io_redir ERRAPPEND _ARGUMENT {
+	    errfile = strdup($3);
+	    errappend = 1;
+	}
+	| io_redir ERRTOOUT {
+	    errfile = outfile;
+	    errappend = 1;
 	}
 ;
 

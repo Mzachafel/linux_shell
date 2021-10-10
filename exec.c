@@ -3,10 +3,12 @@
 extern char *cmdline;
 extern char *infile;
 extern char *outfile;
-extern int append;
+extern char *errfile;
+extern int outappend;
+extern int errappend;
 extern int background;
 
-static void waitfg(pid_t jid);
+static void waitfg(job *jb);
 static int builtin(struct commands *coms);
 static void clearvars(void);
 
@@ -15,8 +17,10 @@ static sigset_t mask_def, mask_ttou;
 void sigchldhandler(int sig)
 {
 	pid_t pid;
+	job *jb;
 	while ((pid = waitpid(-1, NULL, WNOHANG)) > 0) {
-		jb_destroy(pid);
+		jb = jb_get(pid, 0);
+		jb->state = 2;
 	}
 }
 
@@ -27,19 +31,26 @@ void execcoms(struct commands *coms)
 
 	int tmpin = dup(0);
 	int tmpout = dup(1);
+	int tmperr = dup(2);
 
 	int fdin = (infile) ? open(infile, O_RDONLY) : dup(tmpin);
 	int fdout;
+	int fderr = (errfile) ? (errappend) ? open(errfile, O_WRONLY | O_APPEND | O_CREAT, 0644)
+		                            : creat(errfile, 0644)
+			      : dup(tmperr);
+	dup2(fderr, 2);
+	close(fderr);
 
-	pid_t jid, pid, pgid;
+	pid_t pid, pgid;
+	job *jb;
 
 	for (int i=0; i<coms->curcom; i++) {
 		dup2(fdin, 0);
 		close(fdin);
 
 		if (i == coms->curcom-1) {
-			fdout = (outfile) ? (append) ? open(outfile, O_WRONLY | O_APPEND | O_CREAT, 0644)
-				                     : creat(outfile, 0644)
+			fdout = (outfile) ? (outappend) ? open(outfile, O_WRONLY | O_APPEND | O_CREAT, 0644)
+				                        : creat(outfile, 0644)
 					  : dup(tmpout);
 		} else {
 			int fdpipe[2];
@@ -64,10 +75,9 @@ void execcoms(struct commands *coms)
 		else {
 			if (i==0) { 
 				pgid = pid;
-				jid = jb_create(cmdline, pgid, coms->curcom);
-			} else {
-				jb_addpid(pid);
+				jb = jb_create(cmdline, pgid, coms->curcom);
 			}
+			jb->pids[jb->npids++] = pid;
 			setpgid(pid, pgid);
 			if (!background && i == coms->curcom-1) {
 				dup2(tmpout,1);
@@ -78,27 +88,29 @@ void execcoms(struct commands *coms)
 
 	dup2(tmpin,0);
 	dup2(tmpout,1);
+	dup2(tmperr,2);
 	close(tmpin);
 	close(tmpout);
+	close(tmperr);
 
 	if (!background) {
-		waitfg(jid);
+		waitfg(jb);
 	} else
-		printf("[%d] %s %s\n", jid, getstate(0), cmdline);
+		jb_printone(jb);
 
 	clearvars();
 }
 
-static void waitfg(pid_t jid)
+static void waitfg(job *jb)
 {
-	job *temp = jb_getattr(jid, 1);
 	int status;
-	waitpid(temp->pids[temp->npids-1], &status, WUNTRACED);
+	waitpid(jb->pids[jb->npids-1], &status, WUNTRACED);
 	if (WIFSTOPPED(status)) {
-		temp->state = 1;
-		printf("\n[%d] %s %s\n", jid, getstate(1), temp->comm);
+		jb->state = 1;
+		printf("\n");
+		jb_printone(jb);
 	} else {
-		jb_destroy(temp->pids[temp->npids-1]);
+		jb_destroy(jb);
 	}
 	sigemptyset(&mask_ttou);
 	sigaddset(&mask_ttou, SIGTTOU);
@@ -119,13 +131,25 @@ static int builtin(struct commands *coms)
 	} else if (!strcmp(coms->com_list[0]->arg_list[0], "exit")) {
 		exit(EXIT_SUCCESS);
 	} else if (!strcmp(coms->com_list[0]->arg_list[0], "jobs")) {
-		jb_print();
+		if (coms->com_list[0]->curarg == 2) {
+			jb_printall();
+		} else {
+			job *jb;
+			pid_t jid;
+			for (int i=1; coms->com_list[0]->arg_list[i] != NULL; i++) {
+				jid = atoi(coms->com_list[0]->arg_list[i]+1);
+				if ((jb = jb_get(jid, 1)) != NULL)
+					jb_printone(jb);
+				else
+					printf("No job with id %d\n", jid);
+			}
+		}
 		return 1;
 	} else if (!strcmp(coms->com_list[0]->arg_list[0], "kill")) {
 		if (coms->com_list[0]->curarg < 3) {
 			printf("usage: kill pid\n");
 		} else {
-			job *temp;
+			job *jb;
 			pid_t id;
 			int type;
 			for (int i=1; coms->com_list[0]->arg_list[i] != NULL; i++) {
@@ -136,8 +160,8 @@ static int builtin(struct commands *coms)
 					id = atoi(coms->com_list[0]->arg_list[i]);
 					type = 0;
 				}
-				if ((temp = jb_getattr(id, type)) != NULL)
-					kill(-temp->pgid, SIGINT);
+				if ((jb = jb_get(id, type)) != NULL)
+					kill(-jb->pgid, SIGINT);
 				else if (type == 0)
 					kill(id, SIGINT);
 			}
@@ -147,14 +171,13 @@ static int builtin(struct commands *coms)
 		if (coms->com_list[0]->curarg != 3) {
 			printf("usage: fg %%jid\n");
 		} else {
-			job *temp;
-			pid_t jid;
-			jid = atoi(coms->com_list[0]->arg_list[1]+1);
-			if ((temp = jb_getattr(jid, 1)) != NULL) {
-				temp->state = 0;
-				kill(-temp->pgid, SIGCONT);
-				tcsetpgrp(STDOUT_FILENO, temp->pgid);
-				waitfg(jid);
+			job *jb;
+			pid_t jid = atoi(coms->com_list[0]->arg_list[1]+1);
+			if ((jb = jb_get(jid, 1)) != NULL) {
+				jb->state = 0;
+				kill(-jb->pgid, SIGCONT);
+				tcsetpgrp(STDOUT_FILENO, jb->pgid);
+				waitfg(jb);
 			}
 		}
 		return 1;
@@ -162,12 +185,11 @@ static int builtin(struct commands *coms)
 		if (coms->com_list[0]->curarg != 3) {
 			printf("usage: bg %%jid\n");
 		} else {
-			job *temp;
-			pid_t jid;
-			jid = atoi(coms->com_list[0]->arg_list[1]+1);
-			if ((temp = jb_getattr(jid, 1)) != NULL) {
-				temp->state = 0;
-				kill(-temp->pgid, SIGCONT);
+			job *jb;
+			pid_t jid = atoi(coms->com_list[0]->arg_list[1]+1);
+			if ((jb = jb_get(jid, 1)) != NULL) {
+				jb->state = 0;
+				kill(-jb->pgid, SIGCONT);
 			}
 		}
 		return 1;
@@ -182,11 +204,18 @@ static void clearvars(void)
 		free(infile);
 		infile = NULL;
 	}
+	if (errfile == outfile)
+		errfile = NULL;
 	if (outfile) {
 		free(outfile);
 		outfile = NULL;
 	}
-	append = 0;
+	if (errfile) {
+		free(errfile);
+		errfile = NULL;
+	}
+	outappend = 0;
+	errappend = 0;
 	background = 0;
 }
 

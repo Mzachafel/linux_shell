@@ -26,9 +26,12 @@ void sigchldhandler(int sig);
 %%
 "|" 			 { return PIPE; }
 "<" 			 { return READ; }
-">" 			 { return OVERWRITE; }
-">>"			 { return APPEND; }
+1?> 			 { return OUTOVERWRITE; }
+1?>>			 { return OUTAPPEND; }
+2> 			 { return ERROVERWRITE; }
+2>>			 { return ERRAPPEND; }
 "&"			 { return BACKGROUND; }	   
+2>&1                     { return ERRTOOUT; }
 %?[a-zA-Z0-9?*_\.\/-]+|"~" { yylval.arg = strdup(yytext); return _ARGUMENT; }
 \n			 { return _NEWLINE; }
 [ \t]			 { /* ignore whitespaces */ }
