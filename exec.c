@@ -1,3 +1,17 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <regex.h>
+#include <dirent.h>
+#include <signal.h>
+#include <termios.h>
+#include "sortlist.h"
+#include "jobs.h"
 #include "exec.h"
 
 extern char *cmdline;
@@ -9,7 +23,7 @@ extern int errappend;
 extern int background;
 
 static void waitfg(job *jb);
-static int builtin(struct commands *coms);
+static int builtin(commands *coms);
 static void clearvars(void);
 
 static sigset_t mask_def, mask_ttou;
@@ -24,7 +38,7 @@ void sigchldhandler(int sig)
 	}
 }
 
-void execcoms(struct commands *coms)
+void execcoms(commands *coms)
 {
 	if (coms->curcom == 0 || builtin(coms))
 		return;
@@ -65,9 +79,9 @@ void execcoms(struct commands *coms)
 		if ((pid = fork()) == 0) {
 			if (i==0) pgid = getpid();
 			setpgid(0, pgid);
-			if (execvp(coms->com_list[i]->arg_list[0], coms->com_list[i]->arg_list) == -1) {
+			if (execvp(coms->comv[i]->argv[0], coms->comv[i]->argv) == -1) {
 				dup2(tmpout, 1);
-				printf("Command '%s' not found\n", coms->com_list[i]->arg_list[0]);
+				printf("Command '%s' not found\n", coms->comv[i]->argv[0]);
 				exit(EXIT_SUCCESS);
 			}
 		} else if (pid < 0)
@@ -120,24 +134,24 @@ static void waitfg(job *jb)
 }
 
 
-static int builtin(struct commands *coms)
+static int builtin(commands *coms)
 {
-	if (!strcmp(coms->com_list[0]->arg_list[0], "cd")) {
-		if (coms->com_list[0]->curarg != 3)
+	if (!strcmp(coms->comv[0]->argv[0], "cd")) {
+		if (coms->comv[0]->curarg != 3)
 			printf("usage: cd path\n");
 		else
-			chdir(coms->com_list[0]->arg_list[1]);
+			chdir(coms->comv[0]->argv[1]);
 		return 1;
-	} else if (!strcmp(coms->com_list[0]->arg_list[0], "exit")) {
+	} else if (!strcmp(coms->comv[0]->argv[0], "exit")) {
 		exit(EXIT_SUCCESS);
-	} else if (!strcmp(coms->com_list[0]->arg_list[0], "jobs")) {
-		if (coms->com_list[0]->curarg == 2) {
+	} else if (!strcmp(coms->comv[0]->argv[0], "jobs")) {
+		if (coms->comv[0]->curarg == 2) {
 			jb_printall();
 		} else {
 			job *jb;
 			pid_t jid;
-			for (int i=1; coms->com_list[0]->arg_list[i] != NULL; i++) {
-				jid = atoi(coms->com_list[0]->arg_list[i]+1);
+			for (int i=1; coms->comv[0]->argv[i] != NULL; i++) {
+				jid = atoi(coms->comv[0]->argv[i]+1);
 				if ((jb = jb_get(jid, 1)) != NULL)
 					jb_printone(jb);
 				else
@@ -145,19 +159,19 @@ static int builtin(struct commands *coms)
 			}
 		}
 		return 1;
-	} else if (!strcmp(coms->com_list[0]->arg_list[0], "kill")) {
-		if (coms->com_list[0]->curarg < 3) {
+	} else if (!strcmp(coms->comv[0]->argv[0], "kill")) {
+		if (coms->comv[0]->curarg < 3) {
 			printf("usage: kill pid\n");
 		} else {
 			job *jb;
 			pid_t id;
 			int type;
-			for (int i=1; coms->com_list[0]->arg_list[i] != NULL; i++) {
-				if (coms->com_list[0]->arg_list[i][0] == '%') {
-					id = atoi(coms->com_list[0]->arg_list[i]+1);
+			for (int i=1; coms->comv[0]->argv[i] != NULL; i++) {
+				if (coms->comv[0]->argv[i][0] == '%') {
+					id = atoi(coms->comv[0]->argv[i]+1);
 					type = 1;
 				} else {
-					id = atoi(coms->com_list[0]->arg_list[i]);
+					id = atoi(coms->comv[0]->argv[i]);
 					type = 0;
 				}
 				if ((jb = jb_get(id, type)) != NULL)
@@ -167,12 +181,12 @@ static int builtin(struct commands *coms)
 			}
 		}
 		return 1;
-	} else if (!strcmp(coms->com_list[0]->arg_list[0], "fg")) {
-		if (coms->com_list[0]->curarg != 3) {
+	} else if (!strcmp(coms->comv[0]->argv[0], "fg")) {
+		if (coms->comv[0]->curarg != 3) {
 			printf("usage: fg %%jid\n");
 		} else {
 			job *jb;
-			pid_t jid = atoi(coms->com_list[0]->arg_list[1]+1);
+			pid_t jid = atoi(coms->comv[0]->argv[1]+1);
 			if ((jb = jb_get(jid, 1)) != NULL) {
 				jb->state = 0;
 				kill(-jb->pgid, SIGCONT);
@@ -181,12 +195,12 @@ static int builtin(struct commands *coms)
 			}
 		}
 		return 1;
-	} else if (!strcmp(coms->com_list[0]->arg_list[0], "bg")) {
-		if (coms->com_list[0]->curarg != 3) {
+	} else if (!strcmp(coms->comv[0]->argv[0], "bg")) {
+		if (coms->comv[0]->curarg != 3) {
 			printf("usage: bg %%jid\n");
 		} else {
 			job *jb;
-			pid_t jid = atoi(coms->com_list[0]->arg_list[1]+1);
+			pid_t jid = atoi(coms->comv[0]->argv[1]+1);
 			if ((jb = jb_get(jid, 1)) != NULL) {
 				jb->state = 0;
 				kill(-jb->pgid, SIGCONT);
@@ -294,7 +308,7 @@ static void wildcard(char* prefix, char* suffix)
 	closedir(dir);
 }
 
-struct arguments *expandwc(struct arguments *args, char *wc)
+arguments* expandwc(arguments *args, char *wc)
 {
 	creatsl();
 	wildcard("", wc);

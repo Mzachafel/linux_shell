@@ -1,27 +1,24 @@
 #ifndef AST_H
 #define AST_H
 
-#include <stdlib.h>
-#include <string.h>
-
-struct arguments {
+typedef struct _arguments {
+	char **argv;
 	int maxarg;
-	char **arg_list;
 	int curarg;
-};
+} arguments;
 	
-struct arguments *creatargs(void);
-struct arguments *addarg(struct arguments *, char *);
-void clearargs(struct arguments *);
+arguments* creatargs(void);
+arguments* addarg(arguments *args, char *arg);
+void clearargs(arguments *args);
 
-struct commands {
+typedef struct _commands {
+	arguments **comv;
 	int maxcom;
-	struct arguments **com_list;
 	int curcom;
-};
+} commands;
 
-struct commands *creatcoms(void);
-struct commands *addcom(struct commands *, struct arguments *);
-void clearcoms(struct commands *);
+commands* creatcoms(void);
+commands* addcom(commands *coms, arguments *com);
+void clearcoms(commands *coms);
 
 #endif

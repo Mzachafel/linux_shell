@@ -1,18 +1,22 @@
+#include <stdlib.h>
+#include <string.h>
 #include "sortlist.h"
+
+typedef struct _sortlist {
+	char **args;
+	int maxarg;
+	int curarg;
+} sortlist;
+
+static sortlist *sl;
 
 #define DEFMAXSL 8
 
-struct sortlist {
-	int maxarg;
-	char **args;
-	int curarg;
-} static *sl;
-
 void creatsl(void)
 {
-	sl = malloc(sizeof(struct sortlist));
+	sl = malloc(sizeof(sortlist));
+	sl->args = malloc(DEFMAXSL * sizeof(char *));
 	sl->maxarg = DEFMAXSL;
-	sl->args = calloc(sl->maxarg, sizeof(char *));
 	sl->curarg = 0;
 }
 
@@ -32,12 +36,11 @@ static int cmpfunc(const void *a, const void *b)
 	return strcmp(*ia, *ib);
 }
 
-struct arguments *writesl(struct arguments *args)
+arguments* writesl(arguments *args)
 {
 	qsort(sl->args, sl->curarg, sizeof(char *), cmpfunc);
 	for (int i=0; i<sl->curarg; i++)
 		args = addarg(args, sl->args[i]);
-
 	return args;
 }
 

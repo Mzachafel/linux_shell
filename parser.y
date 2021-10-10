@@ -1,5 +1,8 @@
 %{
 
+#include <stdio.h>
+#include <string.h>
+#include "ast.h"
 #include "exec.h"
 
 int yylex();
@@ -15,8 +18,8 @@ int background = 0;
 %}
 
 %union {
-	struct commands *coms;
-	struct arguments *args;
+	struct _commands *coms;
+	struct _arguments *args;
 	char *arg;
 }
 
@@ -42,7 +45,7 @@ command_line:
 
 commands:
 	 arguments {
-	     struct commands *coms = creatcoms();
+	     commands *coms = creatcoms();
 	     $$ = addcom(coms, $1);
 	 }
 	 | commands PIPE arguments {
@@ -52,7 +55,7 @@ commands:
 
 arguments:
 	 _ARGUMENT {
-	     struct arguments *args = creatargs();
+	     arguments *args = creatargs();
 	     $$ = addarg(args, $1);
 	 }
 	 | arguments _ARGUMENT {
