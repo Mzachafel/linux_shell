@@ -8,8 +8,8 @@ typedef struct _arguments {
 } arguments;
 	
 arguments* creatargs(void);
-arguments* addarg(arguments *args, char *arg);
-void clearargs(arguments *args);
+arguments* addarg(arguments* args, char* arg);
+void clearargs(arguments* args);
 
 typedef struct _commands {
 	arguments **comv;
@@ -18,7 +18,16 @@ typedef struct _commands {
 } commands;
 
 commands* creatcoms(void);
-commands* addcom(commands *coms, arguments *com);
-void clearcoms(commands *coms);
+commands* addcom(commands* coms, arguments* com);
+void clearcoms(commands* coms);
+
+typedef struct _ioredir {
+	char *iorv[3];
+	int append[3];
+} ioredir;
+
+ioredir* creatior(void);
+ioredir* addior(ioredir* ior, int fd, int append, char* filename);
+void clearior(ioredir* ior);
 
 #endif

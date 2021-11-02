@@ -8,11 +8,6 @@
 int yylex();
 void yyerror(const char*);
 
-char *infile = NULL;
-char *outfile = NULL;
-char *errfile = NULL;
-int outappend = 0;
-int errappend = 0;
 int background = 0;
 
 %}
@@ -20,6 +15,7 @@ int background = 0;
 %union {
 	struct _commands *coms;
 	struct _arguments *args;
+	struct _ioredir *ior;
 	char *arg;
 }
 
@@ -28,6 +24,7 @@ int background = 0;
 
 %type <coms> commands
 %type <args> arguments
+%type <ior> ioredir
 
 %%
 
@@ -36,9 +33,10 @@ command_list: /* nothing */
 ;
 
 command_line:
-	    commands io_redir background _NEWLINE { 
-	        execcoms($1);
+	    commands ioredir background _NEWLINE { 
+	        execcoms($1, $2);
 		clearcoms($1);
+		clearior($2);
 	    }
             | _NEWLINE { }
 ;
@@ -63,27 +61,26 @@ arguments:
 	 }
 ;
 
-io_redir:
-	| io_redir READ _ARGUMENT {
-	    infile = strdup($3);
+ioredir: {
+	    $$ = creatior();
 	}
-	| io_redir OUTOVERWRITE _ARGUMENT {
-	    outfile = strdup($3);
+	| ioredir READ _ARGUMENT {
+	    $$ = addior($1, 0, 0, $3);
 	}
-	| io_redir OUTAPPEND _ARGUMENT {
-	    outfile = strdup($3);
-	    outappend = 1;
+	| ioredir OUTOVERWRITE _ARGUMENT {
+	    $$ = addior($1, 1, 0, $3);
 	}
-	| io_redir ERROVERWRITE _ARGUMENT {
-	    errfile = strdup($3);
+	| ioredir OUTAPPEND _ARGUMENT {
+	    $$ = addior($1, 1, 1, $3);
 	}
-	| io_redir ERRAPPEND _ARGUMENT {
-	    errfile = strdup($3);
-	    errappend = 1;
+	| ioredir ERROVERWRITE _ARGUMENT {
+	    $$ = addior($1, 2, 0, $3);
 	}
-	| io_redir ERRTOOUT {
-	    errfile = outfile;
-	    errappend = 1;
+	| ioredir ERRAPPEND _ARGUMENT {
+	    $$ = addior($1, 2, 1, $3);
+	}
+	| ioredir ERRTOOUT {
+	    $$ = addior($1, 2, 1, NULL);
 	}
 ;
 

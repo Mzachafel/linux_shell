@@ -15,11 +15,6 @@
 #include "exec.h"
 
 extern char *cmdline;
-extern char *infile;
-extern char *outfile;
-extern char *errfile;
-extern int outappend;
-extern int errappend;
 extern int background;
 
 static void waitfg(job *jb);
@@ -38,7 +33,7 @@ void sigchldhandler(int sig)
 	}
 }
 
-void execcoms(commands *coms)
+void execcoms(commands *coms, ioredir* ior)
 {
 	if (coms->curcom == 0 || builtin(coms))
 		return;
@@ -47,11 +42,11 @@ void execcoms(commands *coms)
 	int tmpout = dup(1);
 	int tmperr = dup(2);
 
-	int fdin = (infile) ? open(infile, O_RDONLY) : dup(tmpin);
+	int fdin = (ior->iorv[0]) ? open(ior->iorv[0], O_RDONLY) : dup(tmpin);
 	int fdout;
-	int fderr = (errfile) ? (errappend) ? open(errfile, O_WRONLY | O_APPEND | O_CREAT, 0644)
-		                            : creat(errfile, 0644)
-			      : dup(tmperr);
+	int fderr = (ior->iorv[2]) ? (ior->append[2]) ? open(ior->iorv[2], O_WRONLY | O_APPEND | O_CREAT, 0644)
+		                                      : creat(ior->iorv[2], 0644)
+			           : dup(tmperr);
 	dup2(fderr, 2);
 	close(fderr);
 
@@ -63,9 +58,9 @@ void execcoms(commands *coms)
 		close(fdin);
 
 		if (i == coms->curcom-1) {
-			fdout = (outfile) ? (outappend) ? open(outfile, O_WRONLY | O_APPEND | O_CREAT, 0644)
-				                        : creat(outfile, 0644)
-					  : dup(tmpout);
+			fdout = (ior->iorv[1]) ? (ior->append[1])?open(ior->iorv[1],O_WRONLY|O_APPEND|O_CREAT, 0644)
+				                                 : creat(ior->iorv[1], 0644)
+					       : dup(tmpout);
 		} else {
 			int fdpipe[2];
 			pipe(fdpipe);
@@ -214,22 +209,6 @@ static int builtin(commands *coms)
 static void clearvars(void)
 {
 	free(cmdline);
-	if (infile) {
-		free(infile);
-		infile = NULL;
-	}
-	if (errfile == outfile)
-		errfile = NULL;
-	if (outfile) {
-		free(outfile);
-		outfile = NULL;
-	}
-	if (errfile) {
-		free(errfile);
-		errfile = NULL;
-	}
-	outappend = 0;
-	errappend = 0;
 	background = 0;
 }
 

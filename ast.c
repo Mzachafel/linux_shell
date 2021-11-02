@@ -63,3 +63,31 @@ void clearcoms(commands *coms)
 		clearargs(coms->comv[i]);
 	free(coms);
 }
+
+
+
+ioredir* creatior(void)
+{
+	ioredir *ior = malloc(sizeof(ioredir));
+	memset(ior, 0, sizeof(ioredir));
+	return ior;
+}
+
+ioredir* addior(ioredir* ior, int fd, int append, char* filename)
+{
+	if (filename != NULL) {
+		ior->iorv[fd] = strdup(filename);
+		ior->append[fd] = append;
+	} else {
+		ior->iorv[2] = strdup(ior->iorv[1]);
+		ior->append[2] = 1;
+	}
+	return ior;
+}
+
+void clearior(ioredir* ior)
+{
+	for (int i=0; i<3; i++)
+		free(ior->iorv[i]);
+	free(ior);
+}
