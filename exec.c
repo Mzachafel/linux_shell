@@ -15,7 +15,6 @@
 #include "exec.h"
 
 extern char *cmdline;
-extern int background;
 
 static void waitfg(job *jb);
 static int builtin(commands *coms);
@@ -33,7 +32,7 @@ void sigchldhandler(int sig)
 	}
 }
 
-void execcoms(commands *coms, ioredir* ior)
+static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 {
 	if (coms->curcom == 0 || builtin(coms))
 		return;
@@ -84,7 +83,7 @@ void execcoms(commands *coms, ioredir* ior)
 		else {
 			if (i==0) { 
 				pgid = pid;
-				jb = jb_create(cmdline, pgid, coms->curcom);
+				jb = jb_create(comm, pgid, coms->curcom);
 			}
 			jb->pids[jb->npids++] = pid;
 			setpgid(pid, pgid);
@@ -106,8 +105,16 @@ void execcoms(commands *coms, ioredir* ior)
 		waitfg(jb);
 	} else
 		jb_printone(jb);
+}
 
-	clearvars();
+void execcblx(comblocks* cblx)
+{
+	int i;
+	char *comm;
+	for (i=0, comm=strtok(cmdline, ";&\0"); i<cblx->curcbl; i++, comm=strtok(NULL, ";&\0"))
+		execcoms(cblx->cblv[i].coms, cblx->cblv[i].ior, cblx->cblv[i].bg, comm);
+	clearcblx(cblx);
+	free(cmdline);
 }
 
 static void waitfg(job *jb)
@@ -204,12 +211,6 @@ static int builtin(commands *coms)
 		return 1;
 	}
 	return 0;
-}
-
-static void clearvars(void)
-{
-	free(cmdline);
-	background = 0;
 }
 
 static void wildcard(char* prefix, char* suffix)

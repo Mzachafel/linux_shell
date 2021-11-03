@@ -8,37 +8,48 @@
 int yylex();
 void yyerror(const char*);
 
-int background = 0;
-
 %}
 
 %union {
+	struct _comblocks *cblx;
 	struct _commands *coms;
 	struct _arguments *args;
 	struct _ioredir *ior;
 	char *arg;
+	int place;
 }
 
-%token PIPE READ OUTOVERWRITE OUTAPPEND ERROVERWRITE ERRAPPEND ERRTOOUT BACKGROUND _NEWLINE
+%token PIPE READ OUTOVERWRITE OUTAPPEND ERROVERWRITE ERRAPPEND ERRTOOUT 
+%token FOREGROUND BACKGROUND _NEWLINE
 %token <arg> _ARGUMENT
 
+%type <cblx> comblocks
 %type <coms> commands
 %type <args> arguments
 %type <ior> ioredir
+%type <place> placement
 
 %%
 
-command_list: /* nothing */
-	    | command_list command_line
+comlist: /* nothing */
+       | comlist comline
 ;
 
-command_line:
-	    commands ioredir background _NEWLINE { 
-	        execcoms($1, $2);
-		clearcoms($1);
-		clearior($2);
-	    }
-            | _NEWLINE { }
+comline:
+	comblocks _NEWLINE { 
+	    execcblx($1);
+	}
+        | _NEWLINE { }
+;
+
+comblocks:
+	  commands ioredir placement {
+	      comblocks *cblx = creatcblx();
+	      $$ = addcbl(cblx, $1, $2, $3);
+	  }
+	  | comblocks commands ioredir placement {
+	      $$ = addcbl($1, $2, $3, $4);
+	  }
 ;
 
 commands:
@@ -61,7 +72,8 @@ arguments:
 	 }
 ;
 
-ioredir: {
+ioredir:
+       	{
 	    $$ = creatior();
 	}
 	| ioredir READ _ARGUMENT {
@@ -84,10 +96,16 @@ ioredir: {
 	}
 ;
 
-background:
-	  | BACKGROUND {
-	      background = 1;
-	  }
+placement:
+	 {
+	     $$ = 0;
+	 }
+	 | FOREGROUND {
+	     $$ = 0;
+	 }
+	 | BACKGROUND {
+	     $$ = 1;
+	 }
 ;
 
 %%

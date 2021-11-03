@@ -91,3 +91,38 @@ void clearior(ioredir* ior)
 		free(ior->iorv[i]);
 	free(ior);
 }
+
+
+
+#define DEFMAXCBLX 4
+
+comblocks* creatcblx(void)
+{
+	comblocks* cblx = malloc(sizeof(comblocks));
+	cblx->cblv = malloc(DEFMAXCBLX * sizeof(struct comblock));
+	cblx->maxcbl = DEFMAXCBLX;
+	cblx->curcbl = 0;
+	return cblx;
+}
+
+comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior, int bg)
+{
+	if (cblx->curcbl == cblx->maxcbl) {
+		cblx->maxcbl *= 2;
+		cblx->cblv = realloc(cblx->cblv, cblx->maxcbl * sizeof(struct comblock));
+	}
+	cblx->cblv[cblx->curcbl].coms = coms;
+	cblx->cblv[cblx->curcbl].ior = ior;
+	cblx->cblv[cblx->curcbl].bg = bg;
+	cblx->curcbl++;
+	return cblx;
+}
+
+void clearcblx(comblocks *cblx)
+{
+	for (int i=0; i<cblx->curcbl; i++) {
+		clearcoms(cblx->cblv[i].coms);
+		clearior(cblx->cblv[i].ior);
+	}
+	free(cblx);
+}

@@ -3,7 +3,7 @@
 
 #include "ast.h"
 
-void execcoms(commands *coms, ioredir* ior);
+void execcblx(comblocks* cblx);
 arguments* expandwc(arguments *args, char *wc);
 
 #endif

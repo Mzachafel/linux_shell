@@ -30,4 +30,20 @@ ioredir* creatior(void);
 ioredir* addior(ioredir* ior, int fd, int append, char* filename);
 void clearior(ioredir* ior);
 
+struct comblock {
+	commands *coms;
+	ioredir *ior;
+	int bg;
+};
+
+typedef struct _comblocks {
+	struct comblock *cblv;
+	int maxcbl;
+	int curcbl;
+} comblocks;
+
+comblocks* creatcblx(void);
+comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior, int bg);
+void clearcblx(comblocks* cblx);
+
 #endif
