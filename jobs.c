@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include "jobs.h"
 
+extern int batch;
+
 static job *jobs = NULL;
 static pid_t jid=1;
 static char *states[] = { "Running", "Stopped", "Done" };
@@ -52,7 +54,8 @@ job* jb_get(pid_t id, int type)
 
 void jb_printone(job *jb)
 {
-	printf("[%d]  %-10s  %s\n", jb->jid, states[jb->state], jb->comm);
+	if (!batch)
+		printf("[%d]  %-10s  %s\n", jb->jid, states[jb->state], jb->comm);
 }
 
 void jb_printall(void)

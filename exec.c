@@ -34,7 +34,7 @@ void sigchldhandler(int sig)
 
 static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 {
-	if (coms->curcom == 0 || builtin(coms))
+	if (coms->curcom == 0)
 		return;
 
 	int tmpin = dup(0);
@@ -51,6 +51,7 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 
 	pid_t pid, pgid;
 	job *jb;
+	int bltinflag;
 
 	for (int i=0; i<coms->curcom; i++) {
 		dup2(fdin, 0);
@@ -70,13 +71,15 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 		dup2(fdout,1);
 		close(fdout);
 
-		if ((pid = fork()) == 0) {
+		if (bltinflag = builtin(coms)) {
+			;
+		} else if ((pid = fork()) == 0) {
 			if (i==0) pgid = getpid();
 			setpgid(0, pgid);
 			if (execvp(coms->comv[i]->argv[0], coms->comv[i]->argv) == -1) {
-				dup2(tmpout, 1);
-				printf("Command '%s' not found\n", coms->comv[i]->argv[0]);
-				exit(EXIT_SUCCESS);
+				dup2(tmperr, 2);
+				fprintf(stderr, "Command '%s' not found\n", coms->comv[i]->argv[0]);
+				_exit(EXIT_SUCCESS);
 			}
 		} else if (pid < 0)
 			break;
@@ -102,7 +105,8 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 	close(tmperr);
 
 	if (!background) {
-		waitfg(jb);
+		if (!bltinflag)
+			waitfg(jb);
 	} else
 		jb_printone(jb);
 }
@@ -140,7 +144,7 @@ static int builtin(commands *coms)
 {
 	if (!strcmp(coms->comv[0]->argv[0], "cd")) {
 		if (coms->comv[0]->curarg != 3)
-			printf("usage: cd path\n");
+			fprintf(stderr, "cd: incorrect number of arguments\n");
 		else
 			chdir(coms->comv[0]->argv[1]);
 		return 1;
@@ -157,13 +161,13 @@ static int builtin(commands *coms)
 				if ((jb = jb_get(jid, 1)) != NULL)
 					jb_printone(jb);
 				else
-					printf("No job with id %d\n", jid);
+					fprintf(stderr, "No job with id %d\n", jid);
 			}
 		}
 		return 1;
 	} else if (!strcmp(coms->comv[0]->argv[0], "kill")) {
 		if (coms->comv[0]->curarg < 3) {
-			printf("usage: kill pid\n");
+			printf("kill: incorrect number of arguments\n");
 		} else {
 			job *jb;
 			pid_t id;
@@ -185,7 +189,7 @@ static int builtin(commands *coms)
 		return 1;
 	} else if (!strcmp(coms->comv[0]->argv[0], "fg")) {
 		if (coms->comv[0]->curarg != 3) {
-			printf("usage: fg %%jid\n");
+			fprintf(stderr, "fd: incorrect number of arguments\n");
 		} else {
 			job *jb;
 			pid_t jid = atoi(coms->comv[0]->argv[1]+1);
@@ -199,7 +203,7 @@ static int builtin(commands *coms)
 		return 1;
 	} else if (!strcmp(coms->comv[0]->argv[0], "bg")) {
 		if (coms->comv[0]->curarg != 3) {
-			printf("usage: bg %%jid\n");
+			fprintf(stderr, "bg: incorrect number of arguments\n");
 		} else {
 			job *jb;
 			pid_t jid = atoi(coms->comv[0]->argv[1]+1);
