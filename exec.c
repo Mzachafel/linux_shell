@@ -18,7 +18,6 @@ extern char *cmdline;
 
 static void waitfg(job *jb);
 static int builtin(commands *coms);
-static void clearvars(void);
 
 static sigset_t mask_def, mask_ttou;
 
@@ -37,15 +36,51 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 	if (coms->curcom == 0)
 		return;
 
-	int tmpin = dup(0);
-	int tmpout = dup(1);
-	int tmperr = dup(2);
+	int tmpin;
+	int tmpout;
+	int tmperr;
 
-	int fdin = (ior->iorv[0]) ? open(ior->iorv[0], O_RDONLY) : dup(tmpin);
+	int fdin;
 	int fdout;
-	int fderr = (ior->iorv[2]) ? (ior->append[2]) ? open(ior->iorv[2], O_WRONLY | O_APPEND | O_CREAT, 0644)
-		                                      : creat(ior->iorv[2], 0644)
-			           : dup(tmperr);
+	int fdoutend;
+	int fderr;
+
+	tmpin = dup(0);
+	if (ior->iorv[0]) {
+		if ((fdin = open(ior->iorv[0], O_RDONLY)) == -1)
+			{ perror("mzsh: infile"); close(tmpin); return; }
+	} else {
+		fdin = dup(tmpin);
+	} 
+
+	tmpout = dup(1);
+	if (ior->iorv[1]) {
+		if (ior->append[1]) {
+			if ((fdoutend = open(ior->iorv[1], O_WRONLY | O_APPEND | O_CREAT, 0644)) == -1)
+				{ perror("mzsh: outfile"); close(tmpin); close(tmpout); close(fdin); return; }
+		} else {
+			if ((fdoutend = creat(ior->iorv[1], 0644)) == -1)
+				{ perror("mzsh: outfile"); close(tmpin); close(tmpout); close(fdin); return; }
+		}
+	} else {
+		fdoutend = dup(tmpout);
+	}
+
+	tmperr = dup(2);
+	if (ior->iorv[2]) {
+		if (ior->append[2]) {
+			if ((fderr = open(ior->iorv[2], O_WRONLY | O_APPEND | O_CREAT, 0644)) == -1)
+				{ perror("mzsh: errfile"); close(tmpin); close(tmpout); close(tmperr);
+					                   close(fdin); close(fdoutend); return; }
+		} else {
+			if ((fderr = creat(ior->iorv[2], 0644)) == -1)
+				{ perror("mzsh: errfile"); close(tmpin); close(tmpout); close(tmperr); 
+					                   close(fdin); close(fdoutend); return; }
+		}
+	} else {
+		fderr = dup(tmperr);
+	}
+
 	dup2(fderr, 2);
 	close(fderr);
 
@@ -58,9 +93,7 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 		close(fdin);
 
 		if (i == coms->curcom-1) {
-			fdout = (ior->iorv[1]) ? (ior->append[1])?open(ior->iorv[1],O_WRONLY|O_APPEND|O_CREAT, 0644)
-				                                 : creat(ior->iorv[1], 0644)
-					       : dup(tmpout);
+			fdout = fdoutend;
 		} else {
 			int fdpipe[2];
 			pipe(fdpipe);
@@ -71,7 +104,7 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 		dup2(fdout,1);
 		close(fdout);
 
-		if (bltinflag = builtin(coms)) {
+		if ((bltinflag = builtin(coms))) {
 			;
 		} else if ((pid = fork()) == 0) {
 			if (i==0) pgid = getpid();
@@ -88,7 +121,7 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 				pgid = pid;
 				jb = jb_create(comm, pgid, coms->curcom);
 			}
-			jb->pids[jb->npids++] = pid;
+			jb->pids[i] = pid;
 			setpgid(pid, pgid);
 			if (!background && i == coms->curcom-1) {
 				dup2(tmpout,1);
@@ -103,6 +136,7 @@ static void execcoms(commands *coms, ioredir* ior, int background, char* comm)
 	close(tmpin);
 	close(tmpout);
 	close(tmperr);
+	close(fdoutend);
 
 	if (!background) {
 		if (!bltinflag)
@@ -161,7 +195,7 @@ static int builtin(commands *coms)
 				if ((jb = jb_get(jid, 1)) != NULL)
 					jb_printone(jb);
 				else
-					fprintf(stderr, "No job with id %d\n", jid);
+					fprintf(stderr, "jobs: no job with id %d\n", jid);
 			}
 		}
 		return 1;
@@ -247,7 +281,7 @@ static void wildcard(char* prefix, char* suffix)
 		s++;
 	}
 	if (*s == '/')
-		*s++;
+		s++;
 	*r++='$'; *r='\0';
 
 	regex_t preg;
@@ -267,6 +301,7 @@ static void wildcard(char* prefix, char* suffix)
 		dir = opendir(prefix);
 	if (dir == NULL) {
 		regfree(&preg);
+		free(reg);
 		return;
 	}
 
@@ -289,6 +324,7 @@ static void wildcard(char* prefix, char* suffix)
 			}
 		}
 	regfree(&preg);
+	free(reg);
 	closedir(dir);
 }
 
@@ -298,5 +334,6 @@ arguments* expandwc(arguments *args, char *wc)
 	wildcard("", wc);
 	args = writesl(args);
 	clearsl();
+	free(wc);
 	return args;
 }

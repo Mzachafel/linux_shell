@@ -34,15 +34,17 @@ extern char* cmdline;
 
 %destructor { clearcoms($$); } commands
 %destructor { clearior($$); } ioredir
+%destructor { free($$); } _ARGUMENT
 
 %%
 
-comlist: /* nothing */
+comlist:
        | comlist comline
 ;
 
 comline:
-	comblocks _NEWLINE { 
+	comblocks finplace _NEWLINE {
+	    setplace($1, $2);
 	    execcblx($1);
 	}
         | _NEWLINE {
@@ -62,9 +64,6 @@ comblocks:
 	      setplace($1, $2);
 	      $$ = addcbl($1, $3, $4);
 	  }
-	  | comblocks finplace {
-	      $$ = setplace($1, $2);
-	  }	      
 ;
 
 commands:
@@ -124,11 +123,8 @@ finplace:
 	{
 	    $$ = 0;
 	}
-	| FOREGROUND {
-	    $$ = 0;
-	}
-	| BACKGROUND {
-	    $$ = 1;
+	| midplace {
+	    $$ = $1;
 	}
 ;
 
@@ -136,5 +132,5 @@ finplace:
 
 void yyerror(const char* s)
 {
-	fprintf(stderr, "mzsh: %s\n", s);
+	fprintf(stderr, "mzsh: parsing: %s\n", s);
 }

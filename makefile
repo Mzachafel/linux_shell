@@ -1,5 +1,5 @@
 shell: parser.tab.o lex.yy.o ast.o sortlist.o jobs.o exec.o 
-	gcc -o mzsh ast.o sortlist.c jobs.c exec.c parser.tab.o lex.yy.o -lfl -lreadline
+	gcc -Wall -o mzsh ast.o sortlist.c jobs.c exec.c parser.tab.o lex.yy.o -lfl -lreadline
 
 parser.tab.c: parser.y
 	bison -d parser.y

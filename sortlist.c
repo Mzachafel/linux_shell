@@ -46,7 +46,6 @@ arguments* writesl(arguments *args)
 
 void clearsl(void)
 {
-	for (int i=0; i<sl->curarg; i++)
-		free(sl->args[i]);
+	free(sl->args);
 	free(sl);
 }

@@ -23,7 +23,8 @@ arguments* addarg(arguments *args, char *arg)
 			args->maxarg *= 2;
 		args->argv = realloc(args->argv, args->maxarg * sizeof(char *));
 	}
-	args->argv[args->curarg++] = (!arg) ? NULL : strdup(arg);
+	args->argv[args->curarg++] = (arg) ? strdup(arg) : NULL;
+	if (arg) free(arg);
 	return args;
 }
 
@@ -32,6 +33,7 @@ void clearargs(arguments *args)
 	int i;
 	for (i = 0; i < args->curarg-1; i++)
 		free(args->argv[i]);
+	free(args->argv);
 	free(args);
 }
 
@@ -64,6 +66,7 @@ void clearcoms(commands *coms)
 	int i;
 	for (i = 0; i < coms->curcom; i++)
 		clearargs(coms->comv[i]);
+	free(coms->comv);
 	free(coms);
 }
 
@@ -79,10 +82,10 @@ ioredir* creatior(void)
 ioredir* addior(ioredir* ior, int fd, int append, char* filename)
 {
 	if (filename != NULL) {
-		ior->iorv[fd] = strdup(filename);
+		ior->iorv[fd] = filename;
 		ior->append[fd] = append;
 	} else {
-		ior->iorv[2] = strdup(ior->iorv[1]);
+		ior->iorv[2] = ior->iorv[1];
 		ior->append[2] = 1;
 	}
 	return ior;
@@ -90,9 +93,13 @@ ioredir* addior(ioredir* ior, int fd, int append, char* filename)
 
 void clearior(ioredir* ior)
 {
-	int i;
-	for (i=0; i<3; i++)
-		free(ior->iorv[i]);
+	if (ior->iorv[0]) free(ior->iorv[0]);
+	if (ior->iorv[1] != ior->iorv[2]) {
+		if (ior->iorv[1]) free(ior->iorv[1]);
+		if (ior->iorv[2]) free(ior->iorv[2]);
+	} else {
+		if (ior->iorv[1]) free(ior->iorv[1]);
+	}
 	free(ior);
 }
 
@@ -117,6 +124,7 @@ comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior)
 	}
 	cblx->cblv[cblx->curcbl].coms = coms;
 	cblx->cblv[cblx->curcbl].ior = ior;
+	cblx->cblv[cblx->curcbl].place = 0;
 	cblx->curcbl++;
 	return cblx;
 }
@@ -134,5 +142,6 @@ void clearcblx(comblocks *cblx)
 		clearcoms(cblx->cblv[i].coms);
 		clearior(cblx->cblv[i].ior);
 	}
+	free(cblx->cblv);
 	free(cblx);
 }
