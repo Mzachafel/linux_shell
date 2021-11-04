@@ -39,34 +39,49 @@ void sigchldhandler(int sig);
 %}
 
 %%
-"|" 			 { return PIPE; }
-"<" 			 { return READ; }
-1?> 			 { return OUTOVERWRITE; }
-1?>>			 { return OUTAPPEND; }
-2> 			 { return ERROVERWRITE; }
-2>>			 { return ERRAPPEND; }
-; 			 { return FOREGROUND; }
-&			 { return BACKGROUND; }	   
-2>&1                     { return ERRTOOUT; }
-%?[a-zA-Z0-9?*_\.\/-]+|"~" { yylval.arg = strdup(yytext); return _ARGUMENT; }
-\n			 { return _NEWLINE; }
-[ \t]			 { /* ignore whitespaces */ }
-.			 { printf("syntax error\n"); }
+"|"		 { return PIPE; }
+"<" 		 { return READ; }
+1?> 		 { return OUTOVERWRITE; }
+1?>>		 { return OUTAPPEND; }
+2> 		 { return ERROVERWRITE; }
+2>>		 { return ERRAPPEND; }
+";" 		 { return FOREGROUND; }
+"&"		 { return BACKGROUND; }	   
+2>&1             { return ERRTOOUT; }
+"\n"		 { return _NEWLINE; }
+[^|<>;&\n\t ]+   { yylval.arg = strdup(yytext); return _ARGUMENT; }
+[ \t]		 { /* ignore whitespace */ }
 %%
 
 int main(int argc, char* argv[])
 {
-	int fd;
-	if (argc == 2) {
+	if (argc > 2) {
+		fprintf(stderr, "mzsh: too many arguments\n");
+		exit(EXIT_FAILURE);
+	} else if (argc == 2) {
+		int fd;
+		size_t n;
+		int result;
 		if ((fd = open(argv[1], O_RDONLY)) == -1) {
-			perror("open");
-			exit(EXIT_FAILURE);
-		}
-		dup2(fd, STDIN_FILENO);
-		close(fd);
+			perror("mzsh: batchmode init");
+			exit(EXIT_FAILURE); }
+		if (dup2(fd, STDIN_FILENO) == -1) {
+			perror("mzsh: batchmode init");
+			exit(EXIT_FAILURE); }
+		if (close(fd) == -1) {
+			perror("mzsh: batchmode init");
+			exit(EXIT_FAILURE); }
 		batch = 1;
+		cmdline = NULL;
+		result = getline(&cmdline, &n, stdin);
+		if (result == -1 || !strstr(cmdline, "#!") && !strstr(cmdline, "mzsh")) {
+			fprintf(stderr, "mzsh: file is not a supported script\n");
+			exit(EXIT_FAILURE); }
+		free(cmdline);
 	}
-	signal(SIGCHLD, sigchldhandler);
+	if (signal(SIGCHLD, sigchldhandler) == SIG_ERR) {
+		perror("mzsh: init");
+		exit(EXIT_FAILURE); }
 	yyparse();
 	return 0;
 }

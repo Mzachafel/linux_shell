@@ -5,8 +5,11 @@
 #include "ast.h"
 #include "exec.h"
 
+#define YYERROR_VERBOSE
+
 int yylex();
 void yyerror(const char*);
+extern char* cmdline;
 
 %}
 
@@ -27,7 +30,10 @@ void yyerror(const char*);
 %type <coms> commands
 %type <args> arguments
 %type <ior> ioredir
-%type <place> placement
+%type <place> midplace finplace
+
+%destructor { clearcoms($$); } commands
+%destructor { clearior($$); } ioredir
 
 %%
 
@@ -39,17 +45,26 @@ comline:
 	comblocks _NEWLINE { 
 	    execcblx($1);
 	}
-        | _NEWLINE { }
+        | _NEWLINE {
+	    free(cmdline);
+	}
+	| error _NEWLINE {
+	    free(cmdline);
+	}
 ;
 
 comblocks:
-	  commands ioredir placement {
+	  commands ioredir {
 	      comblocks *cblx = creatcblx();
-	      $$ = addcbl(cblx, $1, $2, $3);
+	      $$ = addcbl(cblx, $1, $2);
 	  }
-	  | comblocks commands ioredir placement {
-	      $$ = addcbl($1, $2, $3, $4);
+	  | comblocks midplace commands ioredir {
+	      setplace($1, $2);
+	      $$ = addcbl($1, $3, $4);
 	  }
+	  | comblocks finplace {
+	      $$ = setplace($1, $2);
+	  }	      
 ;
 
 commands:
@@ -96,21 +111,30 @@ ioredir:
 	}
 ;
 
-placement:
-	 {
-	     $$ = 0;
-	 }
-	 | FOREGROUND {
-	     $$ = 0;
-	 }
-	 | BACKGROUND {
-	     $$ = 1;
-	 }
+midplace:
+	FOREGROUND {
+	    $$ = 0;
+	}
+	| BACKGROUND {
+	    $$ = 1;
+	}
+;
+
+finplace:
+	{
+	    $$ = 0;
+	}
+	| FOREGROUND {
+	    $$ = 0;
+	}
+	| BACKGROUND {
+	    $$ = 1;
+	}
 ;
 
 %%
 
 void yyerror(const char* s)
 {
-	fprintf(stderr, "error: %s\n", s);
+	fprintf(stderr, "mzsh: %s\n", s);
 }

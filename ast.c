@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include "ast.h"
 
@@ -28,7 +29,8 @@ arguments* addarg(arguments *args, char *arg)
 
 void clearargs(arguments *args)
 {
-	for (int i = 0; i < args->curarg-1; i++)
+	int i;
+	for (i = 0; i < args->curarg-1; i++)
 		free(args->argv[i]);
 	free(args);
 }
@@ -59,7 +61,8 @@ commands* addcom(commands *coms, arguments *com)
 
 void clearcoms(commands *coms)
 {
-	for (int i = 0; i < coms->curcom; i++)
+	int i;
+	for (i = 0; i < coms->curcom; i++)
 		clearargs(coms->comv[i]);
 	free(coms);
 }
@@ -87,7 +90,8 @@ ioredir* addior(ioredir* ior, int fd, int append, char* filename)
 
 void clearior(ioredir* ior)
 {
-	for (int i=0; i<3; i++)
+	int i;
+	for (i=0; i<3; i++)
 		free(ior->iorv[i]);
 	free(ior);
 }
@@ -105,7 +109,7 @@ comblocks* creatcblx(void)
 	return cblx;
 }
 
-comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior, int bg)
+comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior)
 {
 	if (cblx->curcbl == cblx->maxcbl) {
 		cblx->maxcbl *= 2;
@@ -113,14 +117,20 @@ comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior, int bg)
 	}
 	cblx->cblv[cblx->curcbl].coms = coms;
 	cblx->cblv[cblx->curcbl].ior = ior;
-	cblx->cblv[cblx->curcbl].bg = bg;
 	cblx->curcbl++;
+	return cblx;
+}
+
+comblocks* setplace(comblocks* cblx, int place)
+{
+	cblx->cblv[cblx->curcbl-1].place = place;
 	return cblx;
 }
 
 void clearcblx(comblocks *cblx)
 {
-	for (int i=0; i<cblx->curcbl; i++) {
+	int i;
+	for (i=0; i<cblx->curcbl; i++) {
 		clearcoms(cblx->cblv[i].coms);
 		clearior(cblx->cblv[i].ior);
 	}

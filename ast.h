@@ -33,7 +33,7 @@ void clearior(ioredir* ior);
 struct comblock {
 	commands *coms;
 	ioredir *ior;
-	int bg;
+	int place;
 };
 
 typedef struct _comblocks {
@@ -43,7 +43,8 @@ typedef struct _comblocks {
 } comblocks;
 
 comblocks* creatcblx(void);
-comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior, int bg);
+comblocks* addcbl(comblocks* cblx, commands* coms, ioredir* ior);
+comblocks* setplace(comblocks* cblx, int place);
 void clearcblx(comblocks* cblx);
 
 #endif

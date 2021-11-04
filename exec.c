@@ -116,7 +116,7 @@ void execcblx(comblocks* cblx)
 	int i;
 	char *comm;
 	for (i=0, comm=strtok(cmdline, ";&\0"); i<cblx->curcbl; i++, comm=strtok(NULL, ";&\0"))
-		execcoms(cblx->cblv[i].coms, cblx->cblv[i].ior, cblx->cblv[i].bg, comm);
+		execcoms(cblx->cblv[i].coms, cblx->cblv[i].ior, cblx->cblv[i].place, comm);
 	clearcblx(cblx);
 	free(cmdline);
 }
